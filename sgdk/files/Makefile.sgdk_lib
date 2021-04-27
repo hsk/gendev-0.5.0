@@ -1,0 +1,73 @@
+GENDEV?=/opt/toolchains/gen/
+MAKE?=make
+GENGCC_BIN=$(GENDEV)/bin
+GENBIN=$(GENDEV)/bin
+
+CC = $(GENGCC_BIN)/m68k-elf-gcc
+AR = $(GENGCC_BIN)/m68k-elf-ar
+RANLIB = $(GENGCC_BIN)/m68k-elf-ranlib
+OBJC = $(GENGCC_BIN)/m68k-elf-objcopy
+RM = rm -f
+ASMZ80 = $(GENBIN)/sjasm
+BINTOS = $(GENBIN)/bintos
+RESCOMP= java -jar ./bin/rescomp.jar
+EXT=darwin
+OPTION= -Dnologo_
+
+CS=$(wildcard src/*.c)
+SS=$(wildcard src/*.s)
+S80S=$(wildcard src/*.s80)
+RESS= $(wildcard res/*.res)
+
+RESOURCES1=$(RESS:.res=.o)
+RESOURCES=$(CS:.c=.o)
+RESOURCES+=$(SS:.s=.o)
+RESOURCES+=$(S80S:.s80=.o)
+
+libmd.a_OBJS=$(RESOURCES)
+
+INCS = -Iinc -Ires
+FLAGS = $(OPTION) -m68000 -Wall -O1 -c -fomit-frame-pointer $(INCS)
+FLAGSZ80 = -isrc -iinc
+
+all: appack
+	$(MAKE) -f Makefile.sgdk_lib $(RESOURCES1)
+	$(MAKE) -f Makefile.sgdk_lib $(RESOURCES)
+	$(MAKE) -f Makefile.sgdk_lib libmd.a
+
+appack:
+	echo -n "osBits="> tools/appack/makefile.vars
+	getconf LONG_BIT >> tools/appack/makefile.vars
+	cp ../../tools/files/applib/example/makefile.darwin2 tools/appack/makefile.darwin
+	cd tools/appack/ && make -f makefile.$(EXT)
+	cp tools/appack/appack bin/
+
+%.a: $(libmd.a_OBJS) $(RESOURCES1)
+	$(RM) $@
+	$(AR) cru $@ $($@_OBJS) $(RESOURCES1)
+	$(RANLIB) $@
+
+%.o80: %.s80
+	$(ASMZ80) $(FLAGSZ80) $< $@ out.lst
+
+%.s: %.o80
+	$(BINTOS) $<
+
+%.o: %.c
+	$(CC) $(FLAGS) -c $< -o $@
+
+%.o: %.s
+	$(CC) $(FLAGS) -c $< -o $@
+
+%.s: %.res
+	$(RESCOMP) $< $@
+
+clean:
+	#$(RM) -f z80_drv1.c z80_drv2.c
+	$(RM) $(RESOURCES) $(RESOURCES1)
+	$(RM) -rf *.o *.a *.o80 *.log *.lst
+
+install: all
+	cp inc/*.h $(GENDEV)/m68k-elf/include
+	cp res/*.h $(GENDEV)/m68k-elf/include
+	cp libmd.a $(GENDEV)/m68k-elf/lib
